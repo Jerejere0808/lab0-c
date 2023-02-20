@@ -77,6 +77,15 @@ static int string_length = MAXSTRING;
 #define MAX_RANDSTR_LEN 10
 static const char charset[] = "abcdefghijklmnopqrstuvwxyz";
 
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
+
+struct list_head *merge(struct list_head *a, struct list_head *b);
+static void merge_final(struct list_head *head,
+                        struct list_head *a,
+                        struct list_head *b);
+void q_kernelSort(struct list_head *head);
+
 /* Forward declarations */
 static bool q_show(int vlevel);
 
@@ -670,6 +679,52 @@ bool do_sort(int argc, char *argv[])
     return ok && !error_check();
 }
 
+bool do_kernelSort(int argc, char *argv[])
+{
+    if (argc != 1) {
+        report(1, "%s takes no arguments", argv[0]);
+        return false;
+    }
+
+    int cnt = 0;
+    if (!current || !current->q)
+        report(3, "Warning: Calling sort on null queue");
+    else
+        cnt = q_size(current->q);
+    error_check();
+
+    if (cnt < 2)
+        report(3, "Warning: Calling sort on single node");
+    error_check();
+
+    set_noallocate_mode(true);
+    if (current && exception_setup(true))
+        q_kernelSort(current->q);
+    exception_cancel();
+    set_noallocate_mode(false);
+
+    bool ok = true;
+    if (current && current->size) {
+        for (struct list_head *cur_l = current->q->next;
+             cur_l != current->q && --cnt; cur_l = cur_l->next) {
+            /* Ensure each element in ascending order */
+            /* FIXME: add an option to specify sorting order */
+            element_t *item, *next_item;
+            item = list_entry(cur_l, element_t, list);
+            next_item = list_entry(cur_l->next, element_t, list);
+            if (strcmp(item->value, next_item->value) > 0) {
+                report(1, "ERROR: Not sorted in ascending order");
+                ok = false;
+                break;
+            }
+        }
+    }
+
+    q_show(3);
+    return ok && !error_check();
+}
+
+
 static bool do_dm(int argc, char *argv[])
 {
     if (argc != 1) {
@@ -1010,6 +1065,7 @@ static void console_init()
         "[str]");
     ADD_COMMAND(reverse, "Reverse queue", "");
     ADD_COMMAND(sort, "Sort queue in ascending order", "");
+    ADD_COMMAND(kernelSort, "kernelSort queue in ascending order", "");
     ADD_COMMAND(size, "Compute queue size n times (default: n == 1)", "[n]");
     ADD_COMMAND(show, "Show queue contents", "");
     ADD_COMMAND(dm, "Delete middle node in queue", "");
@@ -1230,4 +1286,125 @@ int main(int argc, char *argv[])
     ok = finish_cmd() && ok;
 
     return !ok;
+}
+
+struct list_head *merge(struct list_head *a, struct list_head *b)
+{
+    struct list_head *head, **tail = &head;
+
+    for (;;) {
+        char *value1 = list_entry(a, element_t, list)->value;
+        char *value2 = list_entry(b, element_t, list)->value;
+        if (strcmp(value1, value2) <= 0) {
+            *tail = a;
+            tail = &a->next;
+            a = a->next;
+            if (!a) {
+                *tail = b;
+                break;
+            }
+        } else {
+            *tail = b;
+            tail = &b->next;
+            b = b->next;
+            if (!b) {
+                *tail = a;
+                break;
+            }
+        }
+    }
+    return head;
+}
+
+static void merge_final(struct list_head *head,
+                        struct list_head *a,
+                        struct list_head *b)
+{
+    struct list_head *tail = head;
+    // int count = 0;
+
+    for (;;) {
+        char *value1 = list_entry(a, element_t, list)->value;
+        char *value2 = list_entry(b, element_t, list)->value;
+        if (strcmp(value1, value2) <= 0) {
+            tail->next = a;
+            a->prev = tail;
+            tail = a;
+            a = a->next;
+            if (!a)
+                break;
+        } else {
+            tail->next = b;
+            b->prev = tail;
+            tail = b;
+            b = b->next;
+            if (!b) {
+                b = a;
+                break;
+            }
+        }
+    }
+    tail->next = b;
+    do {
+        b->prev = tail;
+        tail = b;
+        b = b->next;
+    } while (b);
+
+    /* And the final links to make a circular doubly-linked list */
+    tail->next = head;
+    head->prev = tail;
+}
+
+
+void q_kernelSort(struct list_head *head)
+{
+    struct list_head *list = head->next, *pending = NULL;
+    size_t count = 0;
+
+    if (list == head->prev)
+        return;
+
+
+    head->prev->next = NULL;
+
+
+    do {
+        size_t bits;
+        struct list_head **tail = &pending;
+
+        /* Find the least-significant clear bit in count */
+        for (bits = count; bits & 1; bits >>= 1)
+            tail = &(*tail)->prev;
+        /* Do the indicated merge */
+        if (likely(bits)) {
+            struct list_head *a = *tail, *b = a->prev;
+
+            a = merge(b, a);
+            /* Install the merged result in place of the inputs */
+            a->prev = b->prev;
+            *tail = a;
+        }
+
+        /* Move one element from input list to pending */
+        list->prev = pending;
+        pending = list;
+        list = list->next;
+        pending->next = NULL;
+        count++;
+    } while (list);
+
+    /* End of input; merge together all the pending lists. */
+    list = pending;
+    pending = pending->prev;
+    for (;;) {
+        struct list_head *next = pending->prev;
+
+        if (!next)
+            break;
+        list = merge(pending, list);
+        pending = next;
+    }
+    /* The final merge, rebuilding prev links */
+    merge_final(head, pending, list);
 }

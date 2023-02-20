@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 /* Notice: sometimes, Cppcheck would find the potential NULL pointer bugs,
  * but some of them cannot occur. You can suppress them by adding the
  * following line.
@@ -292,35 +291,6 @@ struct list_head *mergeTwoLists(struct list_head *list1,
     return head;
 }
 
-struct list_head *merge(struct list_head *left, struct list_head *right)
-{
-    struct list_head *head;
-
-    int cmp = strcmp(list_entry(left, element_t, list)->value,
-                     list_entry(right, element_t, list)->value);
-    struct list_head **chosen =
-        cmp <= 0 ? &left : &right;  // cmp <= 0 for stability
-    head = *chosen;
-    *chosen = (*chosen)->next;
-
-    list_del_init(head);
-
-    while (left->next != head && right->next != head) {
-        cmp = strcmp(list_entry(left, element_t, list)->value,
-                     list_entry(right, element_t, list)->value);
-        chosen = cmp <= 0 ? &left : &right;  // cmp <= 0 for stability
-        list_move_tail((*chosen = (*chosen)->next)->prev, head);
-    }
-    struct list_head *remain = left->next != head ? left : right;
-    struct list_head *tail = head->prev;
-
-    head->prev = remain->prev;
-    head->prev->next = head;
-    remain->prev = tail;
-    remain->prev->next = remain;
-
-    return head;
-}
 void q_sort(struct list_head *head)
 {
     if (!head || list_empty(head))
@@ -335,34 +305,12 @@ void q_sort(struct list_head *head)
     }
     for (int interval = 1; interval < n; interval *= 2) {
         for (int i = 0; i + interval < n; i += interval * 2) {
-            lists[i] = merge(lists[i], lists[i + interval]);
+            lists[i] = mergeTwoLists(lists[i], lists[i + interval]);
         }
     }
     list_add_tail(head, lists[0]);
     return;
 }
-void q_sort2(struct list_head *head)
-{
-    if (!head || list_empty(head) || list_is_singular(head))
-        return;
-
-    int count = 0, n = q_size(head);
-    struct list_head *sorted[list_size];
-
-    struct list_head *cur, *safe;
-    list_for_each_safe (cur, safe, head)
-        INIT_LIST_HEAD(sorted[count++] = cur);
-
-    for (int size_each_list = 1; size_each_list < n; size_each_list *= 2) {
-        for (int i = 0; i + size_each_list < n; i += size_each_list * 2) {
-            struct list_head *left = sorted[i];
-            struct list_head *right = sorted[i + size_each_list];
-            sorted[i] = merge(left, right);
-        }
-    }
-    list_add_tail(head, sorted[0]);
-}
-
 
 /* Remove every node which has a node with a strictly greater value anywhere to
  * the right side of it */
