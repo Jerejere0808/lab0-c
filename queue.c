@@ -246,7 +246,7 @@ void q_reverseK(struct list_head *head, int k)
 
 
 /* Sort elements of queue in ascending order */
-#define list_size 1000000
+//#define list_size 1000000
 
 struct list_head *mergeTwoLists(struct list_head *list1,
                                 struct list_head *list2)
@@ -297,19 +297,32 @@ void q_sort(struct list_head *head)
         return;
     if (list_is_singular(head))
         return;
-    struct list_head *lists[list_size];
-    struct list_head *cur, *safe;
-    int count = 0, n = q_size(head);
-    list_for_each_safe (cur, safe, head) {
-        INIT_LIST_HEAD(lists[count++] = cur);
+    struct list_head *node, *safe;
+    list_for_each_safe (node, safe, head) {
+        node->prev = node;
     }
-    for (int interval = 1; interval < n; interval *= 2) {
-        for (int i = 0; i + interval < n; i += interval * 2) {
-            lists[i] = mergeTwoLists(lists[i], lists[i + interval]);
+
+    struct list_head *first = head->next;
+    INIT_LIST_HEAD(head);
+
+    while (first->prev->next != head) {
+        struct list_head **cur;
+        struct list_head *next_l, *nnext_l;
+        cur = &first;
+        next_l = (*cur)->prev->next;
+        nnext_l = next_l->prev->next;
+        while (*cur != head && next_l != head) {
+            (*cur)->prev->next = (*cur);
+            next_l->prev->next = next_l;
+            *cur = mergeTwoLists(*cur, next_l);
+
+            cur = &((*cur)->prev->next);
+            *cur = nnext_l;
+            next_l = (*cur)->prev->next;
+            nnext_l = next_l->prev->next;
         }
     }
-    list_add_tail(head, lists[0]);
-    return;
+    list_add_tail(head, first);
 }
 
 /* Remove every node which has a node with a strictly greater value anywhere to
