@@ -192,7 +192,16 @@ void q_swap(struct list_head *head)
     }
     return;
 }
-
+static inline void swap(struct list_head *n1, struct list_head *n2)
+{
+    if (n1 == n2)
+        return;
+    struct list_head *n1_prev = n1->prev;
+    struct list_head *n2_prev = n2->prev;
+    if (n2->prev != n1)
+        list_move(n1, n2_prev);
+    list_move(n2, n1_prev);
+}
 
 /* Reverse elements in queue */
 void q_reverse(struct list_head *head)
@@ -204,18 +213,9 @@ void q_reverse(struct list_head *head)
     while (1) {
         if (l == r)
             break;
-        if (l->next == r) {
-            list_del(l);
-            list_add(l, r);
+        swap(l, r);
+        if (l->prev == r)
             break;
-        }
-        struct list_head *tmp = r->prev;
-        list_del(r);
-        list_add(r, l);
-        list_del(l);
-        list_add(l, tmp);
-
-
         struct list_head *old_r = r;
         r = l->prev;
         l = old_r->next;

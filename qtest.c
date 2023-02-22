@@ -1052,6 +1052,87 @@ static bool do_next(int argc, char *argv[])
 
     return q_show(0);
 }
+static inline void swap(struct list_head *n1, struct list_head *n2)
+{
+    if (n1 == n2)
+        return;
+    struct list_head *n1_prev = n1->prev;
+    struct list_head *n2_prev = n2->prev;
+    if (n2->prev != n1)
+        list_move(n1, n2_prev);
+    list_move(n2, n1_prev);
+}
+
+void q_shuffle(struct list_head *head)
+{
+    if (!head || list_empty(head) || list_is_singular(head))
+        return;
+    struct list_head *last = head->prev;
+    int len = q_size(head);
+    while (len) {
+        int k = rand() % len;
+        struct list_head *cur = head->next;
+
+        while (k--)
+            cur = cur->next;
+        swap(cur, last);
+        last = cur;
+        last = last->prev;
+        len--;
+    }
+    return;
+}
+
+void q_shuffle2(struct list_head *head)
+{
+    if (!head || list_empty(head))
+        return;
+    int len = q_size(head);
+    struct list_head *last = head->prev;
+    while (len) {
+        int k = rand() % len;
+        struct list_head *cur = head->next;
+        for (int i = 0; i <= k; i++)
+            cur = cur->next;
+        element_t *cur_ele = list_entry(cur, element_t, list);
+        element_t *last_ele = list_entry(last, element_t, list);
+
+        char *tmp = cur_ele->value;
+        cur_ele->value = last_ele->value;
+        last_ele->value = tmp;
+
+        last = last->prev;
+        len--;
+    }
+    return;
+}
+
+static bool do_shuffle(int argc, char *argv[])
+{
+    if (argc != 1) {
+        report(1, "%s takes no arguments", argv[0]);
+        return false;
+    }
+
+    int cnt = 0;
+    if (!current || !current->q)
+        report(3, "Warning: Calling sort on null queue");
+    else
+        cnt = q_size(current->q);
+    error_check();
+
+    if (cnt < 2)
+        report(3, "Warning: Calling sort on single node");
+    error_check();
+
+    if (exception_setup(true))
+        q_shuffle(current->q);
+    exception_cancel();
+
+    q_show(3);
+
+    return !error_check();
+}
 
 static void console_init()
 {
@@ -1075,6 +1156,7 @@ static void console_init()
         rt,
         "Remove from tail of queue. Optionally compare to expected value str",
         "[str]");
+    ADD_COMMAND(shuffle, "Shuffle queue", "");
     ADD_COMMAND(reverse, "Reverse queue", "");
     ADD_COMMAND(sort, "Sort queue in ascending order", "");
     ADD_COMMAND(kernelSort, "kernelSort queue in ascending order", "");
