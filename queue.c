@@ -359,7 +359,7 @@ int q_merge(struct list_head *head)
 
     if (!head || list_empty(head))
         return 0;
-    queue_contex_t *cur = head->next;
+    queue_contex_t *cur = list_first_entry(head, queue_contex_t, chain);
     LIST_HEAD(h);
     list_for_each_entry (cur, head, chain) {
         list_splice_init(cur->q, &h);
