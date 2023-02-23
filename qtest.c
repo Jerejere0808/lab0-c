@@ -1083,30 +1083,6 @@ void q_shuffle(struct list_head *head)
     return;
 }
 
-void q_shuffle2(struct list_head *head)
-{
-    if (!head || list_empty(head))
-        return;
-    int len = q_size(head);
-    struct list_head *last = head->prev;
-    while (len) {
-        int k = rand() % len;
-        struct list_head *cur = head->next;
-        for (int i = 0; i <= k; i++)
-            cur = cur->next;
-        element_t *cur_ele = list_entry(cur, element_t, list);
-        element_t *last_ele = list_entry(last, element_t, list);
-
-        char *tmp = cur_ele->value;
-        cur_ele->value = last_ele->value;
-        last_ele->value = tmp;
-
-        last = last->prev;
-        len--;
-    }
-    return;
-}
-
 static bool do_shuffle(int argc, char *argv[])
 {
     if (argc != 1) {
