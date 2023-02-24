@@ -110,12 +110,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <termios.h>
 #include <unistd.h>
 
 #include "linenoise.h"
+#include "report.h"
+#include "web.h"
 
 #define LINENOISE_DEFAULT_HISTORY_MAX_LEN 100
 #define LINENOISE_MAX_LINE 4096
@@ -897,7 +900,8 @@ static int line_edit(int stdin_fd,
                      int stdout_fd,
                      char *buf,
                      size_t buflen,
-                     const char *prompt)
+                     const char *prompt,
+                     int web_fd)
 {
     struct line_state l;
 
@@ -931,10 +935,47 @@ static int line_edit(int stdin_fd,
         signed char c;
         int nread;
         char seq[5];
+        if (web_fd) {
+            fd_set set;
+            FD_ZERO(&set);
+            FD_SET(web_fd, &set);
+            FD_SET(stdin_fd, &set);
+            int rv = select(web_fd + 1, &set, NULL, NULL, NULL);
+            switch (rv) {
+            case -1:
+                perror("select"); /* an error occurred */
+                continue;
+            case 0:
+                printf("timeout occurred\n"); /* a timeout occurred */
+                continue;
+            default:
+                if (FD_ISSET(web_fd, &set)) {
+                    FD_CLR(web_fd, &set);
+                    struct sockaddr_in clientaddr;
+                    socklen_t clientlen = sizeof(clientaddr);
+                    int web_connfd = accept(
+                        web_fd, (struct sockaddr *) &clientaddr, &clientlen);
 
-        nread = read(l.ifd, &c, 1);
-        if (nread <= 0)
-            return l.len;
+                    // buf = strweb_recv(web_connfd, &clientaddr);
+                    strncpy(buf, web_recv(web_connfd, &clientaddr), buflen);
+                    char *buffer =
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+                    web_send(web_connfd, buffer);
+                    close(web_connfd);
+                    return strlen(buf);
+                } else if (FD_ISSET(stdin_fd, &set)) {
+                    nread = read(l.ifd, &c, 1);
+                    if (nread <= 0)
+                        return l.len;
+                }
+                break;
+            }
+
+        } else {
+            nread = read(l.ifd, &c, 1);
+            if (nread <= 0)
+                return l.len;
+        }
 
         /* Only autocomplete when the callback is set. It returns < 0 when
          * there was an error reading from fd. Otherwise it will return the
@@ -1120,7 +1161,7 @@ static int line_edit(int stdin_fd,
 /* This function calls the line editing function line_edit() using
  * the STDIN file descriptor set in raw mode.
  */
-static int line_raw(char *buf, size_t buflen, const char *prompt)
+static int line_raw(char *buf, size_t buflen, const char *prompt, int web_fd)
 {
     if (buflen == 0) {
         errno = EINVAL;
@@ -1129,7 +1170,8 @@ static int line_raw(char *buf, size_t buflen, const char *prompt)
 
     if (enable_raw_mode(STDIN_FILENO) == -1)
         return -1;
-    int count = line_edit(STDIN_FILENO, STDOUT_FILENO, buf, buflen, prompt);
+    int count =
+        line_edit(STDIN_FILENO, STDOUT_FILENO, buf, buflen, prompt, web_fd);
     disable_raw_mode(STDIN_FILENO);
     printf("\n");
     return count;
@@ -1181,7 +1223,7 @@ static char *line_no_tty(void)
  * editing function or uses dummy fgets() so that you will be able to type
  * something even in the most desperate of the conditions.
  */
-char *linenoise(const char *prompt)
+char *linenoise(const char *prompt, int web_fd)
 {
     char buf[LINENOISE_MAX_LINE];
 
@@ -1209,7 +1251,7 @@ char *linenoise(const char *prompt)
         return strdup(buf);
     }
 
-    int count = line_raw(buf, LINENOISE_MAX_LINE, prompt);
+    int count = line_raw(buf, LINENOISE_MAX_LINE, prompt, web_fd);
     if (count == -1)
         return NULL;
     return strdup(buf);

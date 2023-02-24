@@ -5,7 +5,7 @@ from itertools import permutations
 import random
 
 # 測試 shuffle 次數
-test_count = 1000
+test_count = 10000
 input = "new\nit 1\nit 2\nit 3\nit 4\n"
 for i in range(test_count):
     input += "shuffle\n"
